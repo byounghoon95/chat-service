@@ -1,6 +1,6 @@
 package com.example.chatservice.controller;
 
-import com.example.chatservice.dto.ChatMessage;
+import com.example.chatservice.dto.ChatMessageDto;
 import com.example.chatservice.dto.ChatRoomDto;
 import com.example.chatservice.service.ChatService;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +22,8 @@ public class ChatController {
 
     @MessageMapping("/chat.sendMessage")
     @SendTo("/topic/public")
-    public ChatMessage sendMessage(@Payload ChatMessage chatMessage) {
-        return chatMessage;
+    public void sendMessage(@Payload ChatMessageDto chatMessage) {
+        chatService.sendMessage(chatMessage);
     }
 
     @PostMapping("/chat")
@@ -31,8 +31,13 @@ public class ChatController {
         chatService.createRoom(name);
     }
 
-    @GetMapping("/chat")
+    @GetMapping("/chat/rooms")
     public List<ChatRoomDto> getRooms() {
         return chatService.findAllRoom();
+    }
+
+    @GetMapping("/chat")
+    public List<ChatMessageDto> getMessage(@RequestParam("roomId") String roomId) {
+        return chatService.findMessage(roomId);
     }
 }
