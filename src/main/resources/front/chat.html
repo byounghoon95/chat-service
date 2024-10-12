@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>채팅</title>
+  <!-- Bootstrap 5.3.2 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="./chat.css">
+  <link rel='stylesheet' href='https://netdna.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css'>
+  <script src='https://netdna.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js'></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+  <script>
+    let port = 8080;
+    let add = Math.floor(Math.random() * 3);
+    // let newPort = 8080;
+    let newPort = port + add;
+
+    // WebSocket 연결 설정
+    const socket = new WebSocket(`ws://localhost:${newPort}/ws`);
+    const stompClient = Stomp.over(socket);
+    let chatId = localStorage.getItem("chatId");
+
+    $(document).ready(function() {
+        connect();
+        getChatRooms();
+
+        let chatId = localStorage.getItem("chatId");
+        if (chatId == null) {
+          chatId = localStorage.setItem("chatId", "노래하는 프로도" + Math.round(Math.random() * 1000));
+        }
+
+        $('#send').click(function() {
+            if ($("#message").val().length == 0) {
+              return;
+            }
+            sendMessage();
+        });
+    });
+
+    function connect() {
+      stompClient.connect({}, function (frame) {
+          
+          // 토픽 구독
+          stompClient.subscribe('/topic/public', function (message) {
+              const time = convertTime(new Date());
+              showMessage(JSON.parse(message.body),time);
+          });
+      }, function (error) {
+          setTimeout(connect, 5000);
+      });
+    }
+
+    function disconnect() {
+      if (stompClient !== null) {
+          stompClient.disconnect();
+      }
+      console.log("Disconnected");
+    }
+
+    function sendMessage() {
+        const message = $('#message').val();
+        const roomId = $("#currRoom").val();
+        if (roomId == null) {
+          alert("채팅방을 선택하세요");
+          return;
+        } 
+
+        const json = {
+          'roomId': roomId,
+          'sender': chatId,
+          'message': message,
+        };
+        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(json));
+        $('#message').val('');
+    }
+    
+    function makeMessageBody(message,time) {
+      return `<div class="row message-body">
+              <div class="col-sm-12 message-main-receiver">
+                <div class="name" style="font-size: 10px;">${message.sender}</div>
+                <div class="receiver">
+                  <div class="message-text">
+                    ${message.message}
+                  </div>
+                  <span class="message-time pull-right">
+                    ${time}
+                  </span>
+                </div>
+              </div>
+            </div>`
+            ;
+    }
+
+    function showMessage(message,time) {
+        let messageBody = makeMessageBody(message,time);
+        $('#conversation').append(messageBody);
+    }
+
+    function convertTime(time) {
+      const hours = String(time.getHours()).padStart(2, '0');
+      const minutes = String(time.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+
+    function getChatRooms() {
+      fetch(`http://localhost:${newPort}/chat/rooms`) 
+        .then(response => {
+            return response.json(); 
+        })
+        .then(data => {
+            displayChatRooms(data);
+        })
+    }
+
+    function getMessages(roomId) {
+      fetch(`http://localhost:${newPort}/chat?roomId=${roomId}`) 
+        .then(response => {
+            return response.json(); 
+        })
+        .then(data => {
+          let messageBody = '';
+
+          for (const d of data) {
+            if (d.roomId == roomId) {
+              messageBody += makeMessageBody(d, convertTime(new Date(d.time)));
+            }
+          }
+
+          $('#conversation').html(messageBody);
+        })
+    }
+
+    function selectRoom(roomId,roomName) {
+      $("#chatRoomTitle").html(roomName);
+      $("#currRoom").val(roomId);
+
+      getMessages(roomId);
+    }
+
+    function displayChatRooms(data) {
+      for (const d of data) {
+        const value = `
+              <div class="row sideBar-body roomId" onclick="selectRoom('${d.roomId}', '${d.roomName}')">
+                <div class="col-sm-12 col-xs-9 sideBar-main">
+                  <div class="row">
+                    <div class="col-sm-8 col-xs-8 sideBar-name">
+                      <span class="name-meta">${d.roomName}
+                    </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+        `;
+
+        $("#chatRooms").append(value);
+      }      
+    }
+
+  </script>
+  <body>
+    <div class="container app" style="width: 700px;">
+      <input id="currRoom" type="hidden">
+      <div class="row app-one">
+        <div class="col-sm-4 side">
+          <div class="side-one">
+            <div class="row searchBox">
+              <div class="col-sm-12 searchBox-inner">
+                <div class="form-group has-feedback">
+                  <input id="searchText" type="text" class="form-control" name="searchText" placeholder="Search">
+                  <span class="glyphicon glyphicon-search form-control-feedback"></span>
+                </div>
+              </div>
+            </div>
+    
+            <div class="row sideBar" id="chatRooms">
+   
+            </div>
+          </div>
+        </div>
+    
+        <div class="col-sm-8 conversation">
+          <div class="row heading">
+            <div class="col-sm-8 col-xs-7 heading-name">
+              <a class="heading-name-meta" id="chatRoomTitle">
+              </a>
+            </div>
+          </div>
+    
+          <div class="row message" id="conversation">
+            <div class="row message-previous">
+              <div class="col-sm-12 previous">
+              </div>
+            </div>
+          </div>
+    
+          <div class="row reply">
+            <div class="col-sm-9 col-xs-9 reply-main" style="margin-left: 40px;">
+              <textarea class="form-control" rows="1" id="message"></textarea>
+            </div>
+            <div class="col-sm-1 col-xs-1 reply-send">
+              <i class="fa fa-send fa-2x" aria-hidden="true" id="send"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
